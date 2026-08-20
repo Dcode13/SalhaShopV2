@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { Image as ImageIcon, PackagePlus, Search } from "lucide-react";
+import { PackagePlus, Search } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOwner } from "@/lib/auth";
 import { dec } from "@/lib/serialize";
 import { formatNumber } from "@/lib/format";
-import { thumbUrl } from "@/lib/utils";
 import { toggleProductActive } from "@/server/actions/products";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -12,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyRow, Table, TableWrap, Td, Th } from "@/components/ui/table";
 import { buttonClass } from "@/components/ui/button";
 import { DeleteProductButton } from "./delete-product-button";
+import { ProductImageCell } from "./product-image-cell";
 
 export const dynamic = "force-dynamic";
 
@@ -114,18 +114,7 @@ export default async function ProdukListPage({
                     <Td className="font-mono text-xs text-ink-muted">{p.sku}</Td>
                     <Td>
                       <div className="flex items-center gap-2.5">
-                        {p.imageUrl ? (
-                          <img
-                            src={thumbUrl(p.imageUrl)}
-                            alt=""
-                            loading="lazy"
-                            className="size-10 shrink-0 rounded-lg border border-line bg-page object-cover"
-                          />
-                        ) : (
-                          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-line text-ink-faint">
-                            <ImageIcon className="size-4" />
-                          </span>
-                        )}
+                        <ProductImageCell imageUrl={p.imageUrl} name={p.name} sku={p.sku} productId={p.id} />
                         <Link href={`/owner/produk/${p.id}`} className="font-semibold text-primary hover:underline">
                           {p.name}
                         </Link>
