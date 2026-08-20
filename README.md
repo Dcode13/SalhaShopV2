@@ -70,6 +70,7 @@ Buka http://localhost:3000
    - `DIRECT_URL` (session pooler 5432)
    - `AUTH_SECRET`
    - `CRON_SECRET`
+   - `SUPABASE_STORAGE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (foto produk — service_role dari Settings → API)
 4. Deploy. Cron `daily_summaries` otomatis terjadwal dari `vercel.json` (`5 16 * * *` UTC = 00:05 WITA); Vercel mengirim header `Authorization: Bearer $CRON_SECRET` secara otomatis karena env var itu ada.
 5. RLS (`supabase/rls.sql`) sudah diterapkan di database; tidak perlu diulang kecuali membuat project Supabase baru.
 
@@ -122,6 +123,6 @@ Autentikasi memakai email+password (bcrypt) di tabel `users` dengan session JWT 
 
 ## Status Fitur
 
-**MVP (selesai):** auth + role, master data (kategori/supplier/produk + satuan bertingkat + harga tier per outlet), form input produk cepat + stok awal `INITIAL` + halaman Kelengkapan Data, stok + kartu stok + penyesuaian (auto-expense "Kerugian Stok"), pembelian DRAFT→RECEIVED + HPP rata-rata, POS + transaksi atomik + struk, void oleh owner + audit log, hapus produk permanen (hanya produk tanpa riwayat; produk ber-riwayat dinonaktifkan), biaya operasional (termasuk biaya bersama), shift + rekonsiliasi kas, dashboard owner (KPI, grafik, perbandingan outlet, stok menipis, produk mati) & kasir, rekap harian/mingguan/bulanan/tahunan, tombol "Barang tidak ditemukan" → antrean permintaan produk.
+**MVP (selesai):** auth + role, master data (kategori/supplier/produk + satuan bertingkat + harga tier per outlet), form input produk cepat + stok awal `INITIAL` + halaman Kelengkapan Data, stok + kartu stok + penyesuaian (auto-expense "Kerugian Stok"), pembelian DRAFT→RECEIVED + HPP rata-rata, POS + transaksi atomik + struk, void oleh owner + audit log, hapus produk permanen (hanya produk tanpa riwayat; produk ber-riwayat dinonaktifkan), foto produk (kompres & konversi WebP ≤2 MB otomatis di browser → Supabase Storage bucket `produk`, tampil di daftar produk & kartu POS — setup bucket: `npx tsx scripts/setup-bucket.ts`), biaya operasional (termasuk biaya bersama), shift + rekonsiliasi kas, dashboard owner (KPI, grafik, perbandingan outlet, stok menipis, produk mati) & kasir, rekap harian/mingguan/bulanan/tahunan, tombol "Barang tidak ditemukan" → antrean permintaan produk.
 
 **Fase 2 (skema DB sudah siap, UI belum):** stok opname digital, transfer antar outlet, piutang pelanggan, retur, export Excel/PDF, scan barcode kamera.

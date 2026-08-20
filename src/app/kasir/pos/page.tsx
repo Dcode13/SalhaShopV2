@@ -63,6 +63,7 @@ export default async function PosPage() {
     name: p.name,
     sku: p.sku,
     barcode: p.barcode,
+    imageUrl: p.imageUrl,
     baseUnit: p.baseUnit,
     categoryId: p.category.id,
     categoryName: p.category.name,

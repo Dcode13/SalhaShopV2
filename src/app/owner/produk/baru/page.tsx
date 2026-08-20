@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireOwner } from "@/lib/auth";
+import { storageConfigured } from "@/lib/storage";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProductForm } from "../product-form";
 import { buildProductInitial } from "../form-data";
@@ -32,6 +33,7 @@ export default async function ProdukBaruPage({
         categories={categories.map((c) => ({ id: c.id, name: c.name }))}
         outlets={outlets.map((o) => ({ id: o.id, name: o.name }))}
         initial={initial ?? undefined}
+        storageReady={storageConfigured()}
       />
     </>
   );

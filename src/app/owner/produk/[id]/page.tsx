@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Copy } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOwner } from "@/lib/auth";
+import { storageConfigured } from "@/lib/storage";
 import { dec } from "@/lib/serialize";
 import { formatDateTimeID, formatNumber, formatRp } from "@/lib/format";
 import { MOVEMENT_LABELS } from "@/lib/labels";
@@ -105,6 +106,7 @@ export default async function ProdukDetailPage({ params }: { params: Promise<{ i
             outlets={outlets.map((o) => ({ id: o.id, name: o.name }))}
             productId={product.id}
             initial={initial}
+            storageReady={storageConfigured()}
           />
         </div>
 

@@ -2,10 +2,12 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Copy, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, Copy, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { cn, round2 } from "@/lib/utils";
 import { formatRp } from "@/lib/format";
+import { compressToWebp } from "@/lib/image-client";
 import { createProduct, updateProduct, type ProductInput } from "@/server/actions/products";
+import { removeProductImage, uploadProductImage } from "@/server/actions/uploads";
 import { createCategory } from "@/server/actions/master";
 import { Button } from "@/components/ui/button";
 import { FieldHint, Input, Label, Select, Textarea } from "@/components/ui/field";
@@ -34,6 +36,7 @@ export type ProductFormInitial = {
   barcode: string;
   baseUnit: string;
   description: string;
+  imageUrl: string;
   units: UnitRow[];
   outletBlocks: Omit<OutletBlock, "outletId" | "enabled">[] | null;
   enabledOutletIds: string[];
@@ -49,11 +52,13 @@ export function ProductForm({
   outlets,
   productId,
   initial,
+  storageReady = false,
 }: {
   categories: { id: string; name: string }[];
   outlets: { id: string; name: string }[];
   productId?: string; // ada = mode edit
   initial?: ProductFormInitial;
+  storageReady?: boolean; // Supabase Storage terkonfigurasi → upload foto aktif
 }) {
   const router = useRouter();
   const isEdit = !!productId;
@@ -65,6 +70,11 @@ export function ProductForm({
   const [barcode, setBarcode] = React.useState(initial?.barcode ?? "");
   const [baseUnit, setBaseUnit] = React.useState(initial?.baseUnit ?? "pcs");
   const [description, setDescription] = React.useState(initial?.description ?? "");
+  const [imageUrl, setImageUrl] = React.useState(initial?.imageUrl ?? "");
+  const [fotoBusy, setFotoBusy] = React.useState(false);
+  const fotoInputRef = React.useRef<HTMLInputElement>(null);
+  /** URL yang di-upload pada sesi form ini — boleh dihapus fisik bila batal dipakai. */
+  const sessionUploads = React.useRef<Set<string>>(new Set());
   const [units, setUnits] = React.useState<UnitRow[]>(initial?.units ?? []);
   const [blocks, setBlocks] = React.useState<Record<string, Omit<OutletBlock, "outletId" | "enabled">>>(() => {
     const map: Record<string, Omit<OutletBlock, "outletId" | "enabled">> = {};
@@ -98,6 +108,7 @@ export function ProductForm({
       barcode: barcode.trim() || undefined,
       baseUnit: baseUnit.trim(),
       description: description.trim() || undefined,
+      imageUrl: imageUrl || undefined,
       units: units.filter((u) => u.unitName.trim() && u.conversion > 0),
       outlets: outlets
         .filter((o) => enabledOutlets.has(o.id))
@@ -145,10 +156,12 @@ export function ProductForm({
     }
 
     if (isEdit) {
+      sessionUploads.current.clear(); // foto kini milik produk tersimpan
       router.push(`/owner/produk/${productId}`);
       router.refresh();
       return;
     }
+    sessionUploads.current.clear();
 
     // ── MODE INPUT CEPAT: form tidak menutup ──
     const savedName = payload.name;
@@ -169,6 +182,7 @@ export function ProductForm({
     setSku("");
     setBarcode("");
     setDescription("");
+    setImageUrl("");
     setUnits([]);
     setBlocks(() => {
       const map: Record<string, Omit<OutletBlock, "outletId" | "enabled">> = {};
@@ -177,6 +191,46 @@ export function ProductForm({
     });
     router.refresh();
     nameRef.current?.focus();
+  }
+
+  async function onPickFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setFotoBusy(true);
+    setError(null);
+    try {
+      // kompres + resize + konversi WebP terjadi DI BROWSER
+      const { main, thumb } = await compressToWebp(f);
+      const fd = new FormData();
+      fd.append("file", main, "foto.webp");
+      fd.append("thumb", thumb, "thumb.webp");
+      const res = await uploadProductImage(fd);
+      if (!res.ok) {
+        setError(res.error);
+      } else {
+        const old = imageUrl;
+        if (old && sessionUploads.current.has(old)) {
+          removeProductImage(old).catch(() => {});
+          sessionUploads.current.delete(old);
+        }
+        sessionUploads.current.add(res.url);
+        setImageUrl(res.url);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memproses foto.");
+    } finally {
+      setFotoBusy(false);
+    }
+  }
+
+  function onRemoveFoto() {
+    const old = imageUrl;
+    setImageUrl("");
+    if (old && sessionUploads.current.has(old)) {
+      removeProductImage(old).catch(() => {});
+      sessionUploads.current.delete(old);
+    }
   }
 
   async function addCategoryInline() {
@@ -258,6 +312,53 @@ export function ProductForm({
           <div className="md:col-span-2">
             <Label htmlFor="p-desc">Deskripsi</Label>
             <Textarea id="p-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="opsional" />
+          </div>
+
+          {/* Foto produk — otomatis resize + WebP < 2 MB, tersimpan di Supabase Storage */}
+          <div className="md:col-span-2">
+            <Label>Foto produk</Label>
+            <div className="flex items-center gap-3">
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt="Foto produk"
+                  className="size-20 shrink-0 rounded-xl border border-line bg-page object-cover"
+                />
+              ) : (
+                <span className="flex size-20 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-line text-ink-faint">
+                  <ImagePlus className="size-7" />
+                </span>
+              )}
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!storageReady || fotoBusy}
+                    onClick={() => fotoInputRef.current?.click()}
+                  >
+                    {fotoBusy ? "Memproses…" : imageUrl ? "Ganti Foto" : "Pilih Foto"}
+                  </Button>
+                  {imageUrl ? (
+                    <Button variant="ghost" size="sm" className="text-danger" disabled={fotoBusy} onClick={onRemoveFoto}>
+                      Hapus Foto
+                    </Button>
+                  ) : null}
+                </div>
+                <FieldHint tone={storageReady ? "muted" : "warn"}>
+                  {storageReady
+                    ? "JPG/JPEG/PNG otomatis dikompres & dikonversi ke WebP (maks 2 MB)."
+                    : "Upload belum aktif — isi SUPABASE_SERVICE_ROLE_KEY di .env lalu restart server."}
+                </FieldHint>
+              </div>
+            </div>
+            <input
+              ref={fotoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={onPickFoto}
+            />
           </div>
         </CardBody>
       </Card>

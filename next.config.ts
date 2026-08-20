@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
       dynamic: 30,
       static: 180,
     },
+    // Upload foto produk (sudah terkompres ≤2 MB) lewat server action
+    serverActions: {
+      bodySizeLimit: "3mb",
+    },
   },
 };
 

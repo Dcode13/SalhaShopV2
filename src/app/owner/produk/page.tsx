@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { PackagePlus, Search } from "lucide-react";
+import { Image as ImageIcon, PackagePlus, Search } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOwner } from "@/lib/auth";
 import { dec } from "@/lib/serialize";
 import { formatNumber } from "@/lib/format";
+import { thumbUrl } from "@/lib/utils";
 import { toggleProductActive } from "@/server/actions/products";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -112,9 +113,23 @@ export default async function ProdukListPage({
                   <tr key={p.id} className={p.isActive ? "" : "opacity-50"}>
                     <Td className="font-mono text-xs text-ink-muted">{p.sku}</Td>
                     <Td>
-                      <Link href={`/owner/produk/${p.id}`} className="font-semibold text-primary hover:underline">
-                        {p.name}
-                      </Link>
+                      <div className="flex items-center gap-2.5">
+                        {p.imageUrl ? (
+                          <img
+                            src={thumbUrl(p.imageUrl)}
+                            alt=""
+                            loading="lazy"
+                            className="size-10 shrink-0 rounded-lg border border-line bg-page object-cover"
+                          />
+                        ) : (
+                          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-line text-ink-faint">
+                            <ImageIcon className="size-4" />
+                          </span>
+                        )}
+                        <Link href={`/owner/produk/${p.id}`} className="font-semibold text-primary hover:underline">
+                          {p.name}
+                        </Link>
+                      </div>
                     </Td>
                     <Td className="text-ink-muted">{p.category.name}</Td>
                     <Td className="text-right">

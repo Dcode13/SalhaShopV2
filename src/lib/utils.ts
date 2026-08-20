@@ -14,3 +14,8 @@ export function round2(n: number): number {
 export function round4(n: number): number {
   return Math.round((n + Number.EPSILON) * 10000) / 10000;
 }
+
+/** URL thumbnail (192px) dari URL foto utama produk — konvensi `{id}_thumb.webp`. */
+export function thumbUrl(mainUrl: string): string {
+  return mainUrl.replace(/\.webp(\?.*)?$/, "_thumb.webp$1");
+}

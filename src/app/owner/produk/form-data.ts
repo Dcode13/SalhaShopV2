@@ -47,6 +47,8 @@ export async function buildProductInitial(productId: string, forDuplicate = fals
     barcode: forDuplicate ? "" : (p.barcode ?? ""),
     baseUnit: p.baseUnit,
     description: p.description ?? "",
+    imageUrl: forDuplicate ? "" : (p.imageUrl ?? ""), // duplikat = produk beda → foto baru
+
     units: p.units.filter((u) => !u.isBase).map((u) => ({ unitName: u.unitName, conversion: dec(u.conversion) })),
     outletBlocks: null,
     enabledOutletIds: [...outletIds],

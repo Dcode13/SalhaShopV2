@@ -15,7 +15,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { cn, round2, round4 } from "@/lib/utils";
+import { cn, round2, round4, thumbUrl } from "@/lib/utils";
 import { formatNumber, formatRp } from "@/lib/format";
 import { createSale, requestProduct, type CreateSaleResult } from "@/server/actions/sales";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ export type PosProduct = {
   name: string;
   sku: string;
   barcode: string | null;
+  imageUrl: string | null;
   baseUnit: string;
   categoryId: string;
   categoryName: string;
@@ -434,9 +435,19 @@ export function PosClient({
                     : "border-line hover:-translate-y-0.5 hover:border-primary hover:shadow-pop active:scale-[0.98]"
                 )}
               >
-                <div className="w-full">
-                  <p className="line-clamp-2 text-sm font-bold leading-snug text-ink">{p.name}</p>
-                  <p className="mt-0.5 text-[10px] font-medium text-ink-faint">{p.categoryName}</p>
+                <div className="flex w-full items-start gap-2">
+                  {p.imageUrl ? (
+                    <img
+                      src={thumbUrl(p.imageUrl)}
+                      alt=""
+                      loading="lazy"
+                      className="size-11 shrink-0 rounded-lg border border-line bg-page object-cover"
+                    />
+                  ) : null}
+                  <div className="min-w-0">
+                    <p className="line-clamp-2 text-sm font-bold leading-snug text-ink">{p.name}</p>
+                    <p className="mt-0.5 text-[10px] font-medium text-ink-faint">{p.categoryName}</p>
+                  </div>
                 </div>
                 <div className="mt-2 flex w-full items-end justify-between gap-1">
                   <p className="text-sm font-extrabold text-primary tabular-nums">

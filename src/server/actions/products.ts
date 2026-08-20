@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireOwner } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { deleteByPublicUrl } from "@/lib/storage";
 import { dec } from "@/lib/serialize";
 import { round2, round4 } from "@/lib/utils";
 
@@ -41,6 +42,7 @@ const productSchema = z.object({
   barcode: z.string().trim().optional(),
   baseUnit: z.string().trim().min(1, "Satuan dasar wajib diisi"),
   description: z.string().trim().max(500).optional(),
+  imageUrl: z.string().trim().url("URL foto tidak valid").optional(),
   units: z.array(unitSchema).default([]),
   outlets: z.array(outletBlockSchema).min(1, "Pilih minimal satu outlet tempat produk dijual"),
   confirmDuplicate: z.boolean().default(false),
@@ -124,6 +126,7 @@ export async function createProduct(input: ProductInput): Promise<ProductActionR
           categoryId: data.categoryId,
           baseUnit: data.baseUnit,
           description: data.description || null,
+          imageUrl: data.imageUrl || null,
           units: {
             create: [
               { unitName: data.baseUnit, conversion: new Prisma.Decimal(1), isBase: true },
@@ -223,9 +226,13 @@ export async function updateProduct(productId: string, input: ProductInput): Pro
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Input tidak valid" };
   const data = parsed.data;
 
+  let replacedImageUrl: string | null = null;
   try {
     await prisma.$transaction(async (tx) => {
       const existing = await tx.product.findUniqueOrThrow({ where: { id: productId }, include: { units: true } });
+      if (existing.imageUrl && existing.imageUrl !== (data.imageUrl || null)) {
+        replacedImageUrl = existing.imageUrl; // foto lama dihapus dari storage setelah commit
+      }
 
       await tx.product.update({
         where: { id: productId },
@@ -234,6 +241,7 @@ export async function updateProduct(productId: string, input: ProductInput): Pro
           categoryId: data.categoryId,
           barcode: data.barcode || null,
           description: data.description || null,
+          imageUrl: data.imageUrl || null,
           ...(data.sku ? { sku: data.sku } : {}),
         },
       });
@@ -292,6 +300,8 @@ export async function updateProduct(productId: string, input: ProductInput): Pro
       );
     });
 
+    if (replacedImageUrl) await deleteByPublicUrl(replacedImageUrl);
+
     revalidatePath("/owner/produk");
     revalidatePath(`/owner/produk/${productId}`);
     revalidatePath("/owner/stok");
@@ -328,6 +338,7 @@ class DeleteBlocked extends Error {
  */
 export async function deleteProduct(productId: string): Promise<DeleteProductResult> {
   const user = await requireOwner();
+  let imageToDelete: string | null = null;
   try {
     await prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({
@@ -339,6 +350,7 @@ export async function deleteProduct(productId: string): Promise<DeleteProductRes
         },
       });
       if (!product) throw new DeleteBlocked(false, "Produk tidak ditemukan.");
+      imageToDelete = product.imageUrl;
 
       const c = product._count;
       const hasTx = c.saleItems > 0 || c.purchaseItems > 0 || c.opnameItems > 0 || c.transferItems > 0;
@@ -367,6 +379,8 @@ export async function deleteProduct(productId: string): Promise<DeleteProductRes
         tx
       );
     });
+
+    if (imageToDelete) await deleteByPublicUrl(imageToDelete);
 
     revalidatePath("/owner/produk");
     revalidatePath("/owner/stok");
