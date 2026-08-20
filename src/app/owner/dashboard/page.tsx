@@ -36,7 +36,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyRow, Table, TableWrap, Td, Th } from "@/components/ui/table";
 import { buttonClass } from "@/components/ui/button";
-import { BiayaDonut, OmzetLabaChart, OutletBarChart, TopProdukBar } from "@/components/charts";
+import { BiayaDonut, OmzetLabaChart, OutletBarChart, TopProdukBar } from "@/components/charts-lazy";
 
 export const dynamic = "force-dynamic";
 
@@ -86,10 +86,10 @@ export default async function OwnerDashboard({
   const prev = previousRange(range);
   const outletId = params.outlet;
 
-  const outlets = await prisma.outlet.findMany({ where: { isActive: true }, orderBy: { code: "asc" } });
-
-  const [summary, prevSummary, daily, expenseCats, topQty, topProfit, lowStock, deadStock, stockValue, recentSales] =
+  // satu gelombang query paralel — meminimalkan bolak-balik ke database
+  const [outlets, summary, prevSummary, daily, expenseCats, topQty, topProfit, lowStock, deadStock, stockValue, recentSales, lastSessions] =
     await Promise.all([
+      prisma.outlet.findMany({ where: { isActive: true }, orderBy: { code: "asc" } }),
       getPeriodSummary(range, outletId),
       getPeriodSummary(prev, outletId),
       getDailyBreakdown(range, outletId),
@@ -100,6 +100,13 @@ export default async function OwnerDashboard({
       getDeadStock(30, outletId, 6),
       getStockValue(outletId),
       getRecentSales(8, outletId),
+      prisma.cashSession.findMany({
+        where: { status: "CLOSED", ...(outletId ? { outletId } : {}) },
+        orderBy: { closedAt: "desc" },
+        take: 6,
+        distinct: ["outletId"],
+        include: { outlet: { select: { name: true } }, user: { select: { name: true } } },
+      }),
     ]);
 
   // Perbandingan & grafik antar outlet (hanya saat melihat semua outlet)
@@ -130,14 +137,6 @@ export default async function OwnerDashboard({
       }),
     };
   }
-
-  const lastSessions = await prisma.cashSession.findMany({
-    where: { status: "CLOSED", ...(outletId ? { outletId } : {}) },
-    orderBy: { closedAt: "desc" },
-    take: outletId ? 1 : outlets.length,
-    distinct: ["outletId"],
-    include: { outlet: { select: { name: true } }, user: { select: { name: true } } },
-  });
 
   return (
     <>

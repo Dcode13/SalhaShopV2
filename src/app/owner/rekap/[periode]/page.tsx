@@ -30,7 +30,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyRow, Table, TableWrap, Td, Th } from "@/components/ui/table";
 import { PrintButton } from "@/components/print-button";
-import { OmzetLabaChart } from "@/components/charts";
+import { OmzetLabaChart } from "@/components/charts-lazy";
 
 export const dynamic = "force-dynamic";
 

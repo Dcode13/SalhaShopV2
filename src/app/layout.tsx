@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     template: "%s · Salha Shop",
   },
   description: "Sistem manajemen Lapak Grosir & Kios Terminal Salha Shop",
-  icons: { icon: "/salhashoplogo.png" },
+  // favicon & apple icon otomatis dari src/app/icon.png + apple-icon.png (27 KB, bukan logo mentah 795 KB)
 };
 
 export const viewport: Viewport = {

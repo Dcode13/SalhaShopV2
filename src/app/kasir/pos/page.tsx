@@ -13,13 +13,28 @@ export const dynamic = "force-dynamic";
 export default async function PosPage() {
   const user = await requireKasir();
 
-  const [session, outlet, maxDiscount] = await Promise.all([
+  // satu gelombang query paralel — layar POS wajib muat < 2 detik (PRD §11)
+  const [session, outlet, maxDiscount, products] = await Promise.all([
     prisma.cashSession.findFirst({
       where: { userId: user.id, outletId: user.outletId, status: "OPEN" },
       select: { id: true },
     }),
     prisma.outlet.findUniqueOrThrow({ where: { id: user.outletId } }),
     getSettingNumber(SETTING_KEYS.maxDiscountKasir),
+    prisma.product.findMany({
+      where: {
+        isActive: true,
+        inventories: { some: { outletId: user.outletId } },
+        prices: { some: { outletId: user.outletId, isActive: true } },
+      },
+      include: {
+        category: { select: { id: true, name: true } },
+        units: { orderBy: { conversion: "asc" } },
+        prices: { where: { outletId: user.outletId, isActive: true } },
+        inventories: { where: { outletId: user.outletId }, select: { qty: true } },
+      },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   if (!session) {
@@ -42,21 +57,6 @@ export default async function PosPage() {
       </div>
     );
   }
-
-  const products = await prisma.product.findMany({
-    where: {
-      isActive: true,
-      inventories: { some: { outletId: user.outletId } },
-      prices: { some: { outletId: user.outletId, isActive: true } },
-    },
-    include: {
-      category: { select: { id: true, name: true } },
-      units: { orderBy: { conversion: "asc" } },
-      prices: { where: { outletId: user.outletId, isActive: true } },
-      inventories: { where: { outletId: user.outletId }, select: { qty: true } },
-    },
-    orderBy: { name: "asc" },
-  });
 
   const posProducts: PosProduct[] = products.map((p) => ({
     id: p.id,
