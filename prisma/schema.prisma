@@ -1,0 +1,710 @@
+// prisma/schema.prisma — Sistem Manajemen Salha Shop
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // Supabase: connection pooling
+}
+
+// ──────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────
+
+enum Role {
+  OWNER
+  KASIR
+}
+
+enum OutletType {
+  GROSIR
+  KIOS
+}
+
+enum MovementType {
+  PURCHASE_IN // barang masuk dari pembelian
+  SALE_OUT // barang keluar karena penjualan
+  RETURN_IN // retur dari pelanggan / void penjualan
+  RETURN_OUT // retur ke supplier
+  ADJUSTMENT_IN // koreksi tambah (opname)
+  ADJUSTMENT_OUT // koreksi kurang (opname/rusak/hilang)
+  TRANSFER_IN
+  TRANSFER_OUT
+  INITIAL // stok awal saat input pertama
+}
+
+enum PriceType {
+  RETAIL // harga eceran
+  WHOLESALE // harga grosir (dengan min_qty)
+  MEMBER // harga langganan
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  QRIS
+  CREDIT // hutang / bayar nanti
+}
+
+enum SaleStatus {
+  COMPLETED
+  VOID
+  PENDING_PAYMENT // untuk transaksi kredit
+}
+
+enum PurchaseStatus {
+  DRAFT
+  RECEIVED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum SessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum OpnameStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+// ──────────────────────────────────────
+// USER & OUTLET
+// ──────────────────────────────────────
+
+model Outlet {
+  id        String     @id @default(cuid())
+  code      String     @unique // "GROSIR", "KIOS"
+  name      String // "Lapak Grosir Salha"
+  type      OutletType
+  address   String?
+  phone     String?
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  users           User[]
+  inventories     Inventory[]
+  prices          ProductPrice[]
+  stockMovements  StockMovement[]
+  sales           Sale[]
+  purchases       Purchase[]
+  expenses        Expense[]
+  cashSessions    CashSession[]
+  dailySummaries  DailySummary[]
+  customers       Customer[]
+  opnames         StockOpname[]
+  transfersFrom   StockTransfer[]  @relation("TransferFrom")
+  transfersTo     StockTransfer[]  @relation("TransferTo")
+  productRequests ProductRequest[]
+
+  @@map("outlets")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  supabaseId   String?   @unique // sinkron dgn auth.users Supabase (opsional)
+  email        String    @unique
+  passwordHash String? // credentials auth (bcrypt)
+  name         String
+  role         Role      @default(KASIR)
+  outletId     String? // NULL untuk OWNER (akses semua)
+  phone        String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  outlet          Outlet?          @relation(fields: [outletId], references: [id])
+  sales           Sale[]
+  purchases       Purchase[]
+  expenses        Expense[]
+  cashSessions    CashSession[]
+  stockMovements  StockMovement[]
+  auditLogs       AuditLog[]
+  opnames         StockOpname[]
+  productRequests ProductRequest[]
+
+  @@index([outletId])
+  @@index([role])
+  @@map("users")
+}
+
+// ──────────────────────────────────────
+// MASTER DATA PRODUK
+// ──────────────────────────────────────
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  icon      String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  address   String?
+  note      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchases Purchase[]
+
+  @@index([name])
+  @@map("suppliers")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  sku         String   @unique // kode internal, auto-generate
+  barcode     String?  @unique
+  name        String
+  categoryId  String
+  baseUnit    String // "pcs", "kg", "liter", "sachet"
+  imageUrl    String?
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category       Category            @relation(fields: [categoryId], references: [id])
+  units          ProductUnit[]
+  inventories    Inventory[]
+  prices         ProductPrice[]
+  stockMovements StockMovement[]
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseItem[]
+  opnameItems    StockOpnameItem[]
+  transferItems  StockTransferItem[]
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([barcode])
+  @@map("products")
+}
+
+/// Satuan bertingkat. Contoh Gelas Plastik:
+/// pcs (factor 1, isBase) | lusin (factor 12) | dus (factor 144)
+model ProductUnit {
+  id         String  @id @default(cuid())
+  productId  String
+  unitName   String // "lusin", "dus", "karung"
+  conversion Decimal @db.Decimal(12, 4) // berapa base unit per 1 satuan ini
+  isBase     Boolean @default(false)
+  barcode    String?
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, unitName])
+  @@map("product_units")
+}
+
+/// Stok + HPP rata-rata per produk per outlet
+model Inventory {
+  id            String   @id @default(cuid())
+  productId     String
+  outletId      String
+  qty           Decimal  @default(0) @db.Decimal(15, 4) // dalam BASE UNIT
+  avgCost       Decimal  @default(0) @db.Decimal(15, 2) // HPP rata-rata per base unit
+  minStock      Decimal  @default(0) @db.Decimal(15, 4) // ambang peringatan
+  maxStock      Decimal? @db.Decimal(15, 4)
+  shelfLocation String?
+  updatedAt     DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+  outlet  Outlet  @relation(fields: [outletId], references: [id])
+
+  @@unique([productId, outletId])
+  @@index([outletId])
+  @@map("inventories")
+}
+
+/// Harga jual bertingkat. Untuk grosir: minQty 1 = eceran, minQty 12 = harga lusinan, dst.
+model ProductPrice {
+  id        String    @id @default(cuid())
+  productId String
+  outletId  String
+  priceType PriceType @default(RETAIL)
+  unitName  String // satuan yg dipakai utk harga ini
+  minQty    Decimal   @default(1) @db.Decimal(12, 4)
+  price     Decimal   @db.Decimal(15, 2)
+  isActive  Boolean   @default(true)
+  updatedAt DateTime  @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  outlet  Outlet  @relation(fields: [outletId], references: [id])
+
+  @@unique([productId, outletId, priceType, unitName, minQty])
+  @@index([outletId, productId])
+  @@map("product_prices")
+}
+
+// ──────────────────────────────────────
+// KARTU STOK (LEDGER)
+// ──────────────────────────────────────
+
+/// Single source of truth semua mutasi stok. Append-only, tidak pernah di-update.
+model StockMovement {
+  id            String       @id @default(cuid())
+  productId     String
+  outletId      String
+  userId        String
+  type          MovementType
+  qtyChange     Decimal      @db.Decimal(15, 4) // (+) masuk, (−) keluar, base unit
+  qtyBefore     Decimal      @db.Decimal(15, 4)
+  qtyAfter      Decimal      @db.Decimal(15, 4)
+  costPerUnit   Decimal?     @db.Decimal(15, 2) // HPP saat mutasi
+  avgCostAfter  Decimal?     @db.Decimal(15, 2)
+  referenceType String? // "SALE" | "PURCHASE" | "OPNAME" | ...
+  referenceId   String?
+  note          String?
+  createdAt     DateTime     @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+  outlet  Outlet  @relation(fields: [outletId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([productId, outletId, createdAt])
+  @@index([referenceType, referenceId])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
+
+// ──────────────────────────────────────
+// PEMBELIAN (RESTOCK)
+// ──────────────────────────────────────
+
+model Purchase {
+  id              String         @id @default(cuid())
+  invoiceNo       String         @unique // "PO/2026/08/0001"
+  supplierInvoice String? // nomor nota dari supplier
+  outletId        String
+  supplierId      String?
+  userId          String
+  purchaseDate    DateTime
+  subtotal        Decimal        @db.Decimal(15, 2)
+  discount        Decimal        @default(0) @db.Decimal(15, 2)
+  shippingCost    Decimal        @default(0) @db.Decimal(15, 2)
+  otherCost       Decimal        @default(0) @db.Decimal(15, 2)
+  total           Decimal        @db.Decimal(15, 2)
+  paidAmount      Decimal        @default(0) @db.Decimal(15, 2)
+  paymentStatus   PaymentStatus  @default(UNPAID)
+  paymentMethod   PaymentMethod  @default(CASH)
+  dueDate         DateTime?
+  status          PurchaseStatus @default(DRAFT)
+  note            String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  outlet   Outlet         @relation(fields: [outletId], references: [id])
+  supplier Supplier?      @relation(fields: [supplierId], references: [id])
+  user     User           @relation(fields: [userId], references: [id])
+  items    PurchaseItem[]
+
+  @@index([outletId, purchaseDate])
+  @@index([supplierId])
+  @@index([paymentStatus])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         String    @id @default(cuid())
+  purchaseId String
+  productId  String
+  unitName   String // satuan saat beli, mis "dus"
+  qty        Decimal   @db.Decimal(15, 4) // dlm unitName
+  qtyBase    Decimal   @db.Decimal(15, 4) // hasil konversi ke base unit
+  unitCost   Decimal   @db.Decimal(15, 2) // harga per unitName
+  costBase   Decimal   @db.Decimal(15, 2) // harga per base unit
+  discount   Decimal   @default(0) @db.Decimal(15, 2)
+  subtotal   Decimal   @db.Decimal(15, 2)
+  expiryDate DateTime? // penting utk sembako
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@map("purchase_items")
+}
+
+// ──────────────────────────────────────
+// PENJUALAN (POS)
+// ──────────────────────────────────────
+
+model Sale {
+  id            String        @id @default(cuid())
+  invoiceNo     String        @unique // "GROSIR/2026/08/0001"
+  outletId      String
+  userId        String
+  customerId    String?
+  cashSessionId String?
+  saleDate      DateTime      @default(now())
+  subtotal      Decimal       @db.Decimal(15, 2)
+  discount      Decimal       @default(0) @db.Decimal(15, 2)
+  total         Decimal       @db.Decimal(15, 2)
+  totalCost     Decimal       @db.Decimal(15, 2) // Σ HPP — dipakai utk laba
+  grossProfit   Decimal       @db.Decimal(15, 2) // total − totalCost (denormalisasi)
+  paidAmount    Decimal       @db.Decimal(15, 2)
+  changeAmount  Decimal       @default(0) @db.Decimal(15, 2)
+  paymentMethod PaymentMethod @default(CASH)
+  status        SaleStatus    @default(COMPLETED)
+  voidReason    String?
+  voidedById    String?
+  voidedAt      DateTime?
+  note          String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  outlet      Outlet       @relation(fields: [outletId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+  customer    Customer?    @relation(fields: [customerId], references: [id])
+  cashSession CashSession? @relation(fields: [cashSessionId], references: [id])
+  items       SaleItem[]
+  returns     SaleReturn[]
+  receivable  Receivable?
+
+  @@index([outletId, saleDate])
+  @@index([userId, saleDate])
+  @@index([saleDate])
+  @@index([status])
+  @@map("sales")
+}
+
+model SaleItem {
+  id          String    @id @default(cuid())
+  saleId      String
+  productId   String
+  productName String // snapshot nama (kalau produk dihapus)
+  unitName    String
+  qty         Decimal   @db.Decimal(15, 4)
+  qtyBase     Decimal   @db.Decimal(15, 4)
+  unitPrice   Decimal   @db.Decimal(15, 2)
+  priceType   PriceType @default(RETAIL)
+  discount    Decimal   @default(0) @db.Decimal(15, 2)
+  subtotal    Decimal   @db.Decimal(15, 2)
+
+  /// ⚠️ WAJIB: HPP per base unit SAAT transaksi terjadi.
+  /// Tanpa ini, laba historis akan berubah saat harga modal berubah.
+  costAtSale  Decimal @db.Decimal(15, 2)
+  totalCost   Decimal @db.Decimal(15, 2) // qtyBase × costAtSale
+  grossProfit Decimal @db.Decimal(15, 2) // subtotal − totalCost
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+// ──────────────────────────────────────
+// BIAYA OPERASIONAL
+// ──────────────────────────────────────
+
+model ExpenseCategory {
+  id       String  @id @default(cuid())
+  name     String  @unique // Sewa, Listrik, Gaji, Transport, Retribusi
+  isActive Boolean @default(true)
+
+  expenses Expense[]
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  outletId    String? // NULL = biaya bersama
+  categoryId  String
+  userId      String
+  expenseDate DateTime
+  amount      Decimal  @db.Decimal(15, 2)
+  description String
+  receiptUrl  String?
+  isShared    Boolean  @default(false) // dialokasikan ke 2 outlet
+  isRecurring Boolean  @default(false) // sewa/listrik bulanan
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  outlet   Outlet?         @relation(fields: [outletId], references: [id])
+  category ExpenseCategory @relation(fields: [categoryId], references: [id])
+  user     User            @relation(fields: [userId], references: [id])
+
+  @@index([outletId, expenseDate])
+  @@index([expenseDate])
+  @@map("expenses")
+}
+
+// ──────────────────────────────────────
+// SHIFT KASIR & REKONSILIASI KAS
+// ──────────────────────────────────────
+
+model CashSession {
+  id           String        @id @default(cuid())
+  outletId     String
+  userId       String
+  openedAt     DateTime      @default(now())
+  closedAt     DateTime?
+  openingCash  Decimal       @db.Decimal(15, 2) // modal awal laci
+  cashSales    Decimal       @default(0) @db.Decimal(15, 2)
+  nonCashSales Decimal       @default(0) @db.Decimal(15, 2)
+  cashExpenses Decimal       @default(0) @db.Decimal(15, 2)
+  expectedCash Decimal       @default(0) @db.Decimal(15, 2) // opening + cashSales − cashExpenses
+  actualCash   Decimal?      @db.Decimal(15, 2) // hasil hitung fisik kasir
+  difference   Decimal?      @db.Decimal(15, 2) // actual − expected
+  totalTx      Int           @default(0)
+  status       SessionStatus @default(OPEN)
+  note         String?
+
+  outlet Outlet @relation(fields: [outletId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  sales  Sale[]
+
+  @@index([outletId, openedAt])
+  @@index([status])
+  @@map("cash_sessions")
+}
+
+// ──────────────────────────────────────
+// REKAP (CACHE AGREGASI)
+// ──────────────────────────────────────
+
+/// Diisi otomatis oleh cron job tiap tengah malam (WITA).
+/// Mempercepat dashboard tahunan.
+model DailySummary {
+  id            String   @id @default(cuid())
+  outletId      String
+  date          DateTime @db.Date
+  revenue       Decimal  @default(0) @db.Decimal(15, 2)
+  cogs          Decimal  @default(0) @db.Decimal(15, 2)
+  grossProfit   Decimal  @default(0) @db.Decimal(15, 2)
+  expenses      Decimal  @default(0) @db.Decimal(15, 2)
+  netProfit     Decimal  @default(0) @db.Decimal(15, 2)
+  txCount       Int      @default(0)
+  itemsSold     Decimal  @default(0) @db.Decimal(15, 4)
+  avgTicket     Decimal  @default(0) @db.Decimal(15, 2)
+  cashSales     Decimal  @default(0) @db.Decimal(15, 2)
+  nonCashSales  Decimal  @default(0) @db.Decimal(15, 2)
+  purchaseTotal Decimal  @default(0) @db.Decimal(15, 2)
+  computedAt    DateTime @default(now())
+
+  outlet Outlet @relation(fields: [outletId], references: [id])
+
+  @@unique([outletId, date])
+  @@index([date])
+  @@map("daily_summaries")
+}
+
+// ──────────────────────────────────────
+// AUDIT
+// ──────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String // CREATE | UPDATE | DELETE | VOID | LOGIN
+  entityType String // "Sale" | "Product" | "Inventory"
+  entityId   String
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+// ──────────────────────────────────────
+// FASE 2
+// ──────────────────────────────────────
+
+model Customer {
+  id          String    @id @default(cuid())
+  outletId    String?
+  code        String    @unique
+  name        String
+  phone       String?
+  address     String?
+  priceType   PriceType @default(RETAIL) // langganan otomatis dpt harga grosir
+  creditLimit Decimal   @default(0) @db.Decimal(15, 2)
+  totalDebt   Decimal   @default(0) @db.Decimal(15, 2)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  outlet      Outlet?      @relation(fields: [outletId], references: [id])
+  sales       Sale[]
+  receivables Receivable[]
+
+  @@index([name])
+  @@map("customers")
+}
+
+model Receivable {
+  id         String        @id @default(cuid())
+  saleId     String        @unique
+  customerId String
+  amount     Decimal       @db.Decimal(15, 2)
+  paidAmount Decimal       @default(0) @db.Decimal(15, 2)
+  dueDate    DateTime?
+  status     PaymentStatus @default(UNPAID)
+  paidAt     DateTime?
+  note       String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  sale     Sale     @relation(fields: [saleId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([customerId, status])
+  @@index([dueDate])
+  @@map("receivables")
+}
+
+model StockOpname {
+  id         String       @id @default(cuid())
+  outletId   String
+  userId     String
+  opnameDate DateTime
+  status     OpnameStatus @default(DRAFT)
+  totalDiff  Decimal      @default(0) @db.Decimal(15, 2) // nilai rupiah selisih
+  note       String?
+  approvedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  outlet Outlet            @relation(fields: [outletId], references: [id])
+  user   User              @relation(fields: [userId], references: [id])
+  items  StockOpnameItem[]
+
+  @@index([outletId, opnameDate])
+  @@map("stock_opnames")
+}
+
+model StockOpnameItem {
+  id          String  @id @default(cuid())
+  opnameId    String
+  productId   String
+  systemQty   Decimal @db.Decimal(15, 4)
+  physicalQty Decimal @db.Decimal(15, 4)
+  diffQty     Decimal @db.Decimal(15, 4)
+  costPerUnit Decimal @db.Decimal(15, 2)
+  diffValue   Decimal @db.Decimal(15, 2)
+  note        String?
+
+  opname  StockOpname @relation(fields: [opnameId], references: [id], onDelete: Cascade)
+  product Product     @relation(fields: [productId], references: [id])
+
+  @@index([opnameId])
+  @@map("stock_opname_items")
+}
+
+model StockTransfer {
+  id           String   @id @default(cuid())
+  transferNo   String   @unique
+  fromOutletId String
+  toOutletId   String
+  transferDate DateTime
+  status       String   @default("PENDING") // PENDING|RECEIVED|CANCELLED
+  note         String?
+  createdAt    DateTime @default(now())
+
+  fromOutlet Outlet              @relation("TransferFrom", fields: [fromOutletId], references: [id])
+  toOutlet   Outlet              @relation("TransferTo", fields: [toOutletId], references: [id])
+  items      StockTransferItem[]
+
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id          String  @id @default(cuid())
+  transferId  String
+  productId   String
+  qtyBase     Decimal @db.Decimal(15, 4)
+  costPerUnit Decimal @db.Decimal(15, 2)
+
+  transfer StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product  Product       @relation(fields: [productId], references: [id])
+
+  @@map("stock_transfer_items")
+}
+
+model SaleReturn {
+  id           String   @id @default(cuid())
+  returnNo     String   @unique
+  saleId       String
+  returnDate   DateTime
+  totalAmount  Decimal  @db.Decimal(15, 2)
+  reason       String
+  approvedById String?
+  createdAt    DateTime @default(now())
+
+  sale  Sale             @relation(fields: [saleId], references: [id])
+  items SaleReturnItem[]
+
+  @@map("sale_returns")
+}
+
+model SaleReturnItem {
+  id         String  @id @default(cuid())
+  returnId   String
+  saleItemId String
+  qtyBase    Decimal @db.Decimal(15, 4)
+  amount     Decimal @db.Decimal(15, 2)
+  restock    Boolean @default(true) // barang dikembalikan ke stok?
+
+  saleReturn SaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  @@map("sale_return_items")
+}
+
+/// Antrean produk yang diminta kasir saat barang belum ada di sistem.
+/// Kasir hanya mengajukan; owner yang melengkapi HPP, stok, dan harga final.
+model ProductRequest {
+  id             String    @id @default(cuid())
+  outletId       String
+  requestedById  String
+  name           String
+  suggestedPrice Decimal?  @db.Decimal(15, 2) // harga jual yg dipakai kasir saat itu
+  note           String?
+  status         String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  productId      String? // terisi setelah owner buat produknya
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  outlet      Outlet @relation(fields: [outletId], references: [id])
+  requestedBy User   @relation(fields: [requestedById], references: [id])
+
+  @@index([status, outletId])
+  @@map("product_requests")
+}
