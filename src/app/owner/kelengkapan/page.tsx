@@ -125,7 +125,7 @@ export default async function KelengkapanPage() {
         </CardBody>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="⚠ Stok ada, HPP kosong" description="Perbaiki lewat Pembelian (Terima Barang) atau input ulang stok awal" />
           <TableWrap>

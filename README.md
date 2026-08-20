@@ -55,10 +55,33 @@ Buka http://localhost:3000
 | Kasir Grosir | `kasir.grosir@salhashop.id` | `kasir123` |
 | Kasir Kios | `kasir.kios@salhashop.id` | `kasir123` |
 
-### 5. (Produksi) RLS + Cron
+### 5. Deploy ke Vercel
 
-- Jalankan `supabase/rls.sql` di Supabase SQL Editor (lapis pengaman ke-3).
-- Jadwalkan `GET /api/cron/daily-summary` tiap `5 16 * * *` UTC (= 00:05 WITA) dengan header `Authorization: Bearer $CRON_SECRET` (mis. Vercel Cron) untuk mengisi cache `daily_summaries`.
+1. Push repo ke GitHub (`.env` tidak ikut — sudah di `.gitignore`):
+   ```bash
+   git add -A
+   git commit -m "Salha Shop MVP"
+   git remote add origin https://github.com/USERNAME/SalhaShopManajemen.git
+   git push -u origin main
+   ```
+2. Di [vercel.com](https://vercel.com) → **Add New Project** → import repo. Framework terdeteksi otomatis (Next.js); build script sudah menyertakan `prisma generate`.
+3. Isi **Environment Variables** (samakan dengan `.env` lokal):
+   - `DATABASE_URL` (transaction pooler 6543 + `?pgbouncer=true`)
+   - `DIRECT_URL` (session pooler 5432)
+   - `AUTH_SECRET`
+   - `CRON_SECRET`
+4. Deploy. Cron `daily_summaries` otomatis terjadwal dari `vercel.json` (`5 16 * * *` UTC = 00:05 WITA); Vercel mengirim header `Authorization: Bearer $CRON_SECRET` secara otomatis karena env var itu ada.
+5. RLS (`supabase/rls.sql`) sudah diterapkan di database; tidak perlu diulang kecuali membuat project Supabase baru.
+
+### 6. Sebelum go-live sungguhan
+
+- Ganti semua password default (menu **Pengguna**).
+- Setelah selesai masa uji coba, bersihkan data transaksi percobaan **tanpa menyentuh master data**:
+  ```bash
+  npm run db:reset-transaksi          # pratinjau (dry-run)
+  npm run db:reset-transaksi -- --yes # eksekusi
+  ```
+- Stok opname fisik, lalu samakan angka lewat penyesuaian stok.
 
 ---
 
@@ -99,6 +122,6 @@ Autentikasi memakai email+password (bcrypt) di tabel `users` dengan session JWT 
 
 ## Status Fitur
 
-**MVP (selesai):** auth + role, master data (kategori/supplier/produk + satuan bertingkat + harga tier per outlet), form input produk cepat + stok awal `INITIAL` + halaman Kelengkapan Data, stok + kartu stok + penyesuaian (auto-expense "Kerugian Stok"), pembelian DRAFT→RECEIVED + HPP rata-rata, POS + transaksi atomik + struk, void oleh owner + audit log, biaya operasional (termasuk biaya bersama), shift + rekonsiliasi kas, dashboard owner (KPI, grafik, perbandingan outlet, stok menipis, produk mati) & kasir, rekap harian/mingguan/bulanan/tahunan, tombol "Barang tidak ditemukan" → antrean permintaan produk.
+**MVP (selesai):** auth + role, master data (kategori/supplier/produk + satuan bertingkat + harga tier per outlet), form input produk cepat + stok awal `INITIAL` + halaman Kelengkapan Data, stok + kartu stok + penyesuaian (auto-expense "Kerugian Stok"), pembelian DRAFT→RECEIVED + HPP rata-rata, POS + transaksi atomik + struk, void oleh owner + audit log, hapus produk permanen (hanya produk tanpa riwayat; produk ber-riwayat dinonaktifkan), biaya operasional (termasuk biaya bersama), shift + rekonsiliasi kas, dashboard owner (KPI, grafik, perbandingan outlet, stok menipis, produk mati) & kasir, rekap harian/mingguan/bulanan/tahunan, tombol "Barang tidak ditemukan" → antrean permintaan produk.
 
 **Fase 2 (skema DB sudah siap, UI belum):** stok opname digital, transfer antar outlet, piutang pelanggan, retur, export Excel/PDF, scan barcode kamera.

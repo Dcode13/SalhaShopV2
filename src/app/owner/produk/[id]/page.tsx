@@ -13,6 +13,7 @@ import { EmptyRow, Table, TableWrap, Td, Th } from "@/components/ui/table";
 import { buttonClass } from "@/components/ui/button";
 import { ProductForm } from "../product-form";
 import { buildProductInitial } from "../form-data";
+import { DeleteProductButton } from "../delete-product-button";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,10 @@ export default async function ProdukDetailPage({ params }: { params: Promise<{ i
   const [product, initial, categories, outlets, movements] = await Promise.all([
     prisma.product.findUnique({
       where: { id },
-      include: { inventories: { include: { outlet: { select: { name: true } } } } },
+      include: {
+        inventories: { include: { outlet: { select: { name: true } } } },
+        _count: { select: { saleItems: true, purchaseItems: true } },
+      },
     }),
     buildProductInitial(id),
     prisma.category.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
@@ -38,6 +42,14 @@ export default async function ProdukDetailPage({ params }: { params: Promise<{ i
 
   if (!product || !initial) notFound();
 
+  const hasHistory =
+    product._count.saleItems > 0 || product._count.purchaseItems > 0 || movements.some((m) => m.type !== "INITIAL");
+  const stockNote =
+    product.inventories
+      .filter((inv) => dec(inv.qty) > 0)
+      .map((inv) => `${inv.outlet.name} ${formatNumber(dec(inv.qty))} ${product.baseUnit}`)
+      .join(" · ") || null;
+
   return (
     <>
       <PageHeader
@@ -51,6 +63,15 @@ export default async function ProdukDetailPage({ params }: { params: Promise<{ i
             <Link href={`/owner/produk/baru?dari=${product.id}`} className={buttonClass("soft", "sm")}>
               <Copy className="size-4" /> Duplikat Produk Ini
             </Link>
+            <DeleteProductButton
+              productId={product.id}
+              productName={product.name}
+              sku={product.sku}
+              hasHistory={hasHistory}
+              isActive={product.isActive}
+              stockNote={stockNote}
+              redirectTo="/owner/produk"
+            />
           </>
         }
       />

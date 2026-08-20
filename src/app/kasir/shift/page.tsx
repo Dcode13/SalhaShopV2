@@ -28,7 +28,7 @@ export default async function ShiftPage() {
     <>
       <PageHeader title="Shift Kasir" description="Buka shift dengan kas awal, tutup shift dengan hitung kas fisik." />
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <ShiftClient
           openSession={
             open

@@ -56,8 +56,8 @@ export default async function PembelianDetailPage({ params }: { params: Promise<
         </span>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
           <CardHeader title="Item" />
           <TableWrap>
             <Table>

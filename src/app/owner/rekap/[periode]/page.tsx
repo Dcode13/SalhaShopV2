@@ -382,7 +382,7 @@ export default async function RekapPage({
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader title="Breakdown per Minggu" />
             <DailyTable rows={weekRows} labelFor={(wk) => `Minggu ${formatDateID(keyToInstant(wk))}`} />

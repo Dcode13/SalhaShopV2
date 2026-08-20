@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyRow, Table, TableWrap, Td, Th } from "@/components/ui/table";
 import { buttonClass } from "@/components/ui/button";
+import { DeleteProductButton } from "./delete-product-button";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,7 @@ export default async function ProdukListPage({
       include: {
         category: { select: { name: true } },
         inventories: { include: { outlet: { select: { code: true } } } },
-        _count: { select: { prices: true } },
+        _count: { select: { prices: true, saleItems: true, purchaseItems: true } },
       },
       orderBy: { name: "asc" },
       take: 200,
@@ -139,16 +140,32 @@ export default async function ProdukListPage({
                     </Td>
                     <Td>{p.isActive ? <Badge tone="success">AKTIF</Badge> : <Badge tone="neutral">NONAKTIF</Badge>}</Td>
                     <Td>
-                      <form
-                        action={async () => {
-                          "use server";
-                          await toggleProductActive(p.id);
-                        }}
-                      >
-                        <button type="submit" className="text-xs font-bold text-ink-muted hover:text-primary">
-                          {p.isActive ? "Nonaktifkan" : "Aktifkan"}
-                        </button>
-                      </form>
+                      <div className="flex items-center justify-end gap-2">
+                        <form
+                          action={async () => {
+                            "use server";
+                            await toggleProductActive(p.id);
+                          }}
+                        >
+                          <button type="submit" className="text-xs font-bold text-ink-muted hover:text-primary">
+                            {p.isActive ? "Nonaktifkan" : "Aktifkan"}
+                          </button>
+                        </form>
+                        <DeleteProductButton
+                          productId={p.id}
+                          productName={p.name}
+                          sku={p.sku}
+                          hasHistory={p._count.saleItems > 0 || p._count.purchaseItems > 0}
+                          isActive={p.isActive}
+                          stockNote={
+                            p.inventories
+                              .filter((inv) => dec(inv.qty) > 0)
+                              .map((inv) => `${inv.outlet.code} ${formatNumber(dec(inv.qty))} ${p.baseUnit}`)
+                              .join(" · ") || null
+                          }
+                          iconOnly
+                        />
+                      </div>
                     </Td>
                   </tr>
                 ))

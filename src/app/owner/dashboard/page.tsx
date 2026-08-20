@@ -153,7 +153,7 @@ export default async function OwnerDashboard({
       />
 
       {/* KPI */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatCard
           label="Omzet"
           value={formatRp(summary.revenue)}
@@ -218,7 +218,7 @@ export default async function OwnerDashboard({
 
       {/* Perbandingan outlet */}
       {showCompare ? (
-        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader title="Omzet per Outlet" description="Bar bertumpuk Grosir vs Kios" />
             <CardBody>{outletChart ? <OutletBarChart data={outletChart.data} keys={outletChart.keys} /> : null}</CardBody>
@@ -266,7 +266,7 @@ export default async function OwnerDashboard({
       ) : null}
 
       {/* Produk terlaris & paling untung */}
-      <div className="mt-5 grid gap-4 xl:grid-cols-2">
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="10 Produk Terlaris" description="Berdasarkan qty terjual (base unit)" />
           <CardBody>
@@ -290,7 +290,7 @@ export default async function OwnerDashboard({
       </div>
 
       {/* Peringatan & aktivitas */}
-      <div className="mt-5 grid gap-4 xl:grid-cols-2">
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader
             title={
@@ -377,7 +377,7 @@ export default async function OwnerDashboard({
         </Card>
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-2">
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="Selisih Kas Shift Terakhir" description="Rekonsiliasi tutup shift per outlet" />
           <TableWrap>

@@ -40,22 +40,41 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "rounded-xl border p-4 shadow-card",
+        "relative overflow-hidden rounded-2xl border p-4 shadow-card transition-shadow hover:shadow-pop",
         highlight
           ? "border-primary-strong bg-gradient-to-br from-primary to-primary-strong text-white"
           : "border-line bg-surface"
       )}
     >
-      <div className="flex items-center justify-between gap-2">
+      {highlight ? (
+        <>
+          <span className="pointer-events-none absolute -right-8 -top-12 size-32 rounded-full bg-white/10" />
+          <span className="pointer-events-none absolute -bottom-14 -left-6 size-24 rounded-full bg-white/5" />
+        </>
+      ) : null}
+
+      <div className="flex items-start justify-between gap-2">
         <p className={cn("text-xs font-semibold", highlight ? "text-white/80" : "text-ink-muted")}>{label}</p>
         {icon ? (
-          <span className={cn(highlight ? "text-white/70" : "text-primary")}>{icon}</span>
+          <span
+            className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-xl",
+              highlight ? "bg-white/15 text-white" : "bg-primary-soft text-primary"
+            )}
+          >
+            {icon}
+          </span>
         ) : null}
       </div>
-      <p className={cn("mt-2 text-2xl font-extrabold tracking-tight tabular-nums", highlight ? "text-white" : "text-ink")}>
+      <p
+        className={cn(
+          "mt-1 text-[22px] font-extrabold leading-8 tracking-tight tabular-nums md:text-2xl",
+          highlight ? "text-white" : "text-ink"
+        )}
+      >
         {value}
       </p>
-      <div className="mt-1.5 flex items-center gap-2">
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
         {deltaBadge}
         {sub ? (
           <span className={cn("text-xs", highlight ? "text-white/75" : "text-ink-muted")}>{sub}</span>

@@ -116,7 +116,7 @@ export default async function KasirDashboard() {
         </Link>
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-2">
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title="10 Transaksi Terakhir Saya" description="Klik untuk lihat detail / cetak ulang struk" />
           <TableWrap>

@@ -49,6 +49,12 @@
 
   --shadow-card: 0 1px 2px 0 rgb(24 16 46 / 0.06), 0 1px 3px 0 rgb(24 16 46 / 0.08);
   --shadow-pop: 0 10px 30px -6px rgb(24 16 46 / 0.22);
+
+  /* animasi mikro — sebagai token agar bisa dipakai dgn varian responsif (sm:animate-…) */
+  --animate-fade-in: fade-in 0.15s ease-out;
+  --animate-slide-up: slide-up 0.22s ease-out;
+  --animate-sheet-up: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-slide-in-left: slide-in-left 0.2s ease-out;
 }
 
 /* ── Tema OWNER — ungu, senada logo ─────────────────────────── */
@@ -142,6 +148,45 @@ table td.money {
   }
 }
 
+/* Latar aplikasi: gradasi tipis warna primary di bagian atas */
+.app-bg {
+  background: var(--page);
+  background:
+    radial-gradient(1100px 420px at 85% -12%, color-mix(in oklab, var(--primary) 8%, transparent), transparent 62%),
+    radial-gradient(700px 300px at -10% 0%, color-mix(in oklab, var(--primary) 5%, transparent), transparent 55%),
+    var(--page);
+}
+
+/* Ruang aman perangkat ber-notch (bottom nav & sheet) */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Sembunyikan scrollbar (deret chip kategori di mobile) */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Animasi mikro */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
 /* Scrollbar halus untuk panel POS */
 .thin-scroll {
   scrollbar-width: thin;

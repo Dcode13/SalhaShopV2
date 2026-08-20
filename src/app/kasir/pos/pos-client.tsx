@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Banknote,
   CheckCircle2,
+  ChevronUp,
   Minus,
   PackageSearch,
   Plus,
@@ -12,6 +13,7 @@ import {
   Search,
   ShoppingCart,
   Trash2,
+  X,
 } from "lucide-react";
 import { cn, round2, round4 } from "@/lib/utils";
 import { formatNumber, formatRp } from "@/lib/format";
@@ -79,6 +81,7 @@ export function PosClient({
   const [cart, setCart] = React.useState<CartItem[]>([]);
   const [txDiscount, setTxDiscount] = React.useState(0);
   const [payOpen, setPayOpen] = React.useState(false);
+  const [sheetOpen, setSheetOpen] = React.useState(false); // keranjang mobile
   const [notFoundOpen, setNotFoundOpen] = React.useState(false);
   const [result, setResult] = React.useState<CreateSaleResult | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -114,12 +117,9 @@ export function PosClient({
   function addToCart(p: PosProduct) {
     setError(null);
     const already = usedBase.get(p.id) ?? 0;
-    if (already + 1 > p.stock && p.stock >= 0) {
-      // masih boleh menambah bila satuan pecahan — cek kasar untuk qty 1 base
-      if (already >= p.stock) {
-        setError(`Stok ${p.name} tinggal ${formatNumber(p.stock)} ${p.baseUnit}.`);
-        return;
-      }
+    if (already >= p.stock) {
+      setError(`Stok ${p.name} tinggal ${formatNumber(p.stock)} ${p.baseUnit}.`);
+      return;
     }
     setCart((prev) => {
       const idx = prev.findIndex((c) => c.product.id === p.id && c.unitName === p.baseUnit);
@@ -157,6 +157,13 @@ export function PosClient({
   const overDiscount = totalDiscount > maxDiscount;
   const change = paymentMethod === "CASH" ? round2(paidAmount - total) : 0;
 
+  function openPayment() {
+    setPaidAmount(0);
+    setPaymentMethod("CASH");
+    setSheetOpen(false);
+    setPayOpen(true);
+  }
+
   async function submit() {
     setSaving(true);
     setError(null);
@@ -175,6 +182,7 @@ export function PosClient({
     if (res.ok) {
       setResult(res.data);
       setPayOpen(false);
+      setSheetOpen(false);
       setCart([]);
       setTxDiscount(0);
       setPaidAmount(0);
@@ -184,66 +192,235 @@ export function PosClient({
     }
   }
 
-  return (
-    <div className="grid gap-4 xl:grid-cols-5">
-      {/* ── Kiri: pencarian + grid produk ── */}
-      <div className="xl:col-span-3">
-        <div className="mb-3 flex gap-2">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-faint" />
-            <Input
-              ref={searchRef}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && filtered.length === 1) {
-                  addToCart(filtered[0]);
-                  setSearch("");
-                }
-              }}
-              placeholder="Cari nama / SKU / scan barcode…"
-              className="h-12 pl-9 text-base"
-              autoFocus
+  /* ── Panel keranjang (dipakai di aside desktop & bottom-sheet mobile) ── */
+  const cartPanel = (
+    <div className="flex h-full flex-col">
+      <div className={cn("flex-1 overflow-y-auto thin-scroll", cart.length === 0 && "flex items-center")}>
+        {cart.length === 0 ? (
+          <div className="w-full px-4 py-12 text-center">
+            <ShoppingCart className="mx-auto size-10 text-ink-faint/50" />
+            <p className="mt-2 text-sm text-ink-faint">Keranjang kosong — ketuk produk untuk menambahkan.</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-line">
+            {lines.map((line, i) => (
+              <li key={`${line.item.product.id}-${line.item.unitName}-${i}`} className="px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-ink">{line.item.product.name}</p>
+                    <p className="text-[11px] text-ink-faint">
+                      {formatRp(line.price)}/{line.item.unitName}
+                      {line.priceType !== "RETAIL" ? (
+                        <Badge tone="info" className="ml-1.5">
+                          GROSIR
+                        </Badge>
+                      ) : null}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(i)}
+                    className="rounded-md p-1 text-ink-faint hover:bg-danger-soft hover:text-danger"
+                    aria-label="Hapus item"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {line.item.product.units.length > 1 && isGrosir ? (
+                    <Select
+                      value={line.item.unitName}
+                      onChange={(e) => updateItem(i, { unitName: e.target.value })}
+                      className="h-10 w-24 text-xs"
+                    >
+                      {line.item.product.units.map((u) => (
+                        <option key={u.unitName} value={u.unitName}>
+                          {u.unitName}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <span className="text-xs font-semibold text-ink-muted">{line.item.unitName}</span>
+                  )}
+
+                  <div className="flex items-center overflow-hidden rounded-xl border border-line">
+                    <button
+                      type="button"
+                      className="flex size-10 items-center justify-center text-ink-muted transition-colors hover:bg-page hover:text-primary"
+                      onClick={() => updateItem(i, { qty: Math.max(round4(line.item.qty - 1), 0.0001) })}
+                      aria-label="Kurangi"
+                    >
+                      <Minus className="size-4" />
+                    </button>
+                    <input
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={line.item.qty}
+                      onChange={(e) => updateItem(i, { qty: Math.max(Number(e.target.value) || 0, 0) })}
+                      className="h-10 w-14 border-x border-line text-center text-sm font-bold text-ink outline-none"
+                    />
+                    <button
+                      type="button"
+                      className="flex size-10 items-center justify-center text-ink-muted transition-colors hover:bg-page hover:text-primary"
+                      onClick={() => updateItem(i, { qty: round4(line.item.qty + 1) })}
+                      aria-label="Tambah"
+                    >
+                      <Plus className="size-4" />
+                    </button>
+                  </div>
+
+                  {maxDiscount > 0 ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-semibold text-ink-faint">Disk.</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={line.item.discount || ""}
+                        placeholder="0"
+                        onChange={(e) => updateItem(i, { discount: Math.max(Number(e.target.value) || 0, 0) })}
+                        className="h-10 w-20 rounded-xl border border-line px-2 text-right text-xs text-ink"
+                      />
+                    </div>
+                  ) : null}
+
+                  <p className="ml-auto text-sm font-extrabold text-ink tabular-nums">{formatRp(line.subtotal)}</p>
+                </div>
+
+                {line.overStock ? (
+                  <p className="mt-1 text-[11px] font-bold text-danger">
+                    Stok kurang! Tersedia {formatNumber(line.item.product.stock)} {line.item.product.baseUnit}, diminta{" "}
+                    {formatNumber(line.qtyBase)}.
+                  </p>
+                ) : null}
+                {line.noPrice ? (
+                  <p className="mt-1 text-[11px] font-bold text-danger">Harga satuan ini belum di-set.</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="space-y-2 border-t border-line px-4 py-3">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-ink-muted">Subtotal</span>
+          <span className="font-bold tabular-nums">{formatRp(subtotal)}</span>
+        </div>
+        {maxDiscount > 0 ? (
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-ink-muted">Diskon transaksi</span>
+            <input
+              type="number"
+              min={0}
+              value={txDiscount || ""}
+              placeholder="0"
+              onChange={(e) => setTxDiscount(Math.max(Number(e.target.value) || 0, 0))}
+              className="h-10 w-28 rounded-xl border border-line px-2 text-right text-sm text-ink"
             />
           </div>
-          <Button variant="outline" size="lg" className="h-12" onClick={() => setNotFoundOpen(true)}>
-            <PackageSearch className="size-4" />
-            <span className="hidden sm:inline">Barang tidak ditemukan</span>
-          </Button>
+        ) : null}
+        {overDiscount ? (
+          <p className="text-[11px] font-bold text-danger">
+            Total diskon melebihi batas kasir ({formatRp(maxDiscount)}).
+          </p>
+        ) : null}
+        <div className="flex items-center justify-between border-t border-line pt-2">
+          <span className="text-sm font-bold text-ink">TOTAL</span>
+          <span className="text-2xl font-extrabold text-primary tabular-nums">{formatRp(total)}</span>
         </div>
+        {error ? (
+          <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-red-800">{error}</p>
+        ) : null}
+        <Button size="xl" className="w-full" disabled={hasProblem || overDiscount || total <= 0} onClick={openPayment}>
+          <Banknote className="size-5" /> Bayar
+        </Button>
+      </div>
+    </div>
+  );
 
-        <div className="mb-3 flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setCategoryId(null)}
-            className={cn(
-              "rounded-full px-3 py-1.5 text-xs font-bold",
-              !categoryId ? "bg-primary text-primary-fg" : "bg-surface text-ink-muted border border-line hover:border-primary"
-            )}
-          >
-            Semua
-          </button>
-          {categories.map((c) => (
+  return (
+    <div className="grid gap-4 pb-20 xl:grid-cols-5 xl:pb-0">
+      {/* ── Kiri: pencarian + grid produk ── */}
+      <div className="xl:col-span-3">
+        {/* baris pencarian — sticky di bawah navbar mobile */}
+        <div className="sticky top-14 z-20 -mx-4 bg-page/95 px-4 pb-2 pt-1 backdrop-blur lg:static lg:mx-0 lg:bg-transparent lg:p-0 lg:pb-3 lg:backdrop-blur-none">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-faint" />
+              <Input
+                ref={searchRef}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && filtered.length === 1) {
+                    addToCart(filtered[0]);
+                    setSearch("");
+                  }
+                }}
+                placeholder="Cari nama / SKU / scan barcode…"
+                className="h-12 rounded-xl pl-9 text-base shadow-card"
+                autoFocus
+              />
+              {search ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    searchRef.current?.focus();
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-ink-faint hover:bg-page hover:text-ink"
+                  aria-label="Bersihkan pencarian"
+                >
+                  <X className="size-4" />
+                </button>
+              ) : null}
+            </div>
+            <Button variant="outline" size="lg" className="h-12 rounded-xl bg-surface" onClick={() => setNotFoundOpen(true)}>
+              <PackageSearch className="size-4" />
+              <span className="hidden sm:inline">Barang tidak ditemukan</span>
+            </Button>
+          </div>
+
+          {/* chip kategori — bisa digeser di layar sempit */}
+          <div className="mt-2 flex gap-1.5 overflow-x-auto no-scrollbar sm:flex-wrap">
             <button
-              key={c.id}
               type="button"
-              onClick={() => setCategoryId(categoryId === c.id ? null : c.id)}
+              onClick={() => setCategoryId(null)}
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-bold",
-                categoryId === c.id
-                  ? "bg-primary text-primary-fg"
-                  : "bg-surface text-ink-muted border border-line hover:border-primary"
+                "shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors",
+                !categoryId
+                  ? "bg-primary text-primary-fg shadow-sm"
+                  : "border border-line bg-surface text-ink-muted hover:border-primary hover:text-primary"
               )}
             >
-              {c.name}
+              Semua
             </button>
-          ))}
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCategoryId(categoryId === c.id ? null : c.id)}
+                className={cn(
+                  "shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors",
+                  categoryId === c.id
+                    ? "bg-primary text-primary-fg shadow-sm"
+                    : "border border-line bg-surface text-ink-muted hover:border-primary hover:text-primary"
+                )}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="grid max-h-[62vh] grid-cols-2 gap-2 overflow-y-auto pr-1 thin-scroll sm:grid-cols-3 lg:grid-cols-4">
+        {/* grid produk — ikut scroll halaman di mobile, panel scroll sendiri di desktop */}
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 thin-scroll xl:max-h-[68vh] xl:grid-cols-4 xl:overflow-y-auto xl:pr-1">
           {filtered.map((p) => {
             const retail = resolvePrice(p, p.baseUnit, 1);
             const out = p.stock <= 0;
+            const low = !out && p.stock <= 5;
             return (
               <button
                 key={p.id}
@@ -251,21 +428,29 @@ export function PosClient({
                 onClick={() => addToCart(p)}
                 disabled={out}
                 className={cn(
-                  "flex min-h-24 flex-col items-start justify-between rounded-xl border bg-surface p-3 text-left shadow-card transition-all",
+                  "group flex min-h-28 flex-col items-start justify-between rounded-2xl border bg-surface p-3 text-left shadow-card transition-all",
                   out
-                    ? "cursor-not-allowed border-line opacity-50"
-                    : "border-line hover:-translate-y-0.5 hover:border-primary hover:shadow-pop"
+                    ? "cursor-not-allowed border-line opacity-45"
+                    : "border-line hover:-translate-y-0.5 hover:border-primary hover:shadow-pop active:scale-[0.98]"
                 )}
               >
-                <p className="line-clamp-2 text-sm font-bold leading-tight text-ink">{p.name}</p>
-                <div className="mt-2 w-full">
+                <div className="w-full">
+                  <p className="line-clamp-2 text-sm font-bold leading-snug text-ink">{p.name}</p>
+                  <p className="mt-0.5 text-[10px] font-medium text-ink-faint">{p.categoryName}</p>
+                </div>
+                <div className="mt-2 flex w-full items-end justify-between gap-1">
                   <p className="text-sm font-extrabold text-primary tabular-nums">
                     {retail ? formatRp(retail.price) : "—"}
                     <span className="text-[10px] font-semibold text-ink-faint">/{p.baseUnit}</span>
                   </p>
-                  <p className={cn("text-[11px] font-semibold", out ? "text-danger" : "text-ink-faint")}>
-                    {out ? "Habis" : `Stok ${formatNumber(p.stock)} ${p.baseUnit}`}
-                  </p>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                      out ? "bg-danger-soft text-red-800" : low ? "bg-warn-soft text-amber-800" : "bg-page text-ink-faint"
+                    )}
+                  >
+                    {out ? "Habis" : formatNumber(p.stock)}
+                  </span>
                 </div>
               </button>
             );
@@ -278,171 +463,70 @@ export function PosClient({
         </div>
       </div>
 
-      {/* ── Kanan: keranjang ── */}
-      <div className="xl:col-span-2">
-        <div className="rounded-xl border border-line bg-surface shadow-card">
+      {/* ── Kanan: keranjang (desktop) ── */}
+      <div className="hidden xl:block xl:col-span-2">
+        <div className="flex max-h-[calc(100dvh-7rem)] flex-col rounded-2xl border border-line bg-surface shadow-card">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <h2 className="inline-flex items-center gap-2 text-sm font-extrabold text-ink">
               <ShoppingCart className="size-4 text-primary" /> Keranjang
             </h2>
             <Badge tone="primary">{cart.length} item</Badge>
           </div>
-
-          <div className="max-h-[46vh] overflow-y-auto thin-scroll">
-            {cart.length === 0 ? (
-              <p className="px-4 py-12 text-center text-sm text-ink-faint">
-                Klik produk di kiri untuk menambahkan.
-              </p>
-            ) : (
-              <ul className="divide-y divide-line">
-                {lines.map((line, i) => (
-                  <li key={`${line.item.product.id}-${line.item.unitName}-${i}`} className="px-4 py-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-ink">{line.item.product.name}</p>
-                        <p className="text-[11px] text-ink-faint">
-                          {formatRp(line.price)}/{line.item.unitName}
-                          {line.priceType !== "RETAIL" ? (
-                            <Badge tone="info" className="ml-1.5">
-                              GROSIR
-                            </Badge>
-                          ) : null}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(i)}
-                        className="rounded-md p-1 text-ink-faint hover:bg-danger-soft hover:text-danger"
-                        aria-label="Hapus item"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </div>
-
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {/* satuan */}
-                      {line.item.product.units.length > 1 && isGrosir ? (
-                        <Select
-                          value={line.item.unitName}
-                          onChange={(e) => updateItem(i, { unitName: e.target.value })}
-                          className="h-9 w-24 text-xs"
-                        >
-                          {line.item.product.units.map((u) => (
-                            <option key={u.unitName} value={u.unitName}>
-                              {u.unitName}
-                            </option>
-                          ))}
-                        </Select>
-                      ) : (
-                        <span className="text-xs font-semibold text-ink-muted">{line.item.unitName}</span>
-                      )}
-
-                      {/* qty */}
-                      <div className="flex items-center rounded-lg border border-line">
-                        <button
-                          type="button"
-                          className="flex size-9 items-center justify-center text-ink-muted hover:text-primary"
-                          onClick={() => updateItem(i, { qty: Math.max(round4(line.item.qty - 1), 0.0001) })}
-                          aria-label="Kurangi"
-                        >
-                          <Minus className="size-4" />
-                        </button>
-                        <input
-                          type="number"
-                          min={0}
-                          step="any"
-                          value={line.item.qty}
-                          onChange={(e) => updateItem(i, { qty: Math.max(Number(e.target.value) || 0, 0) })}
-                          className="h-9 w-16 border-x border-line text-center text-sm font-bold text-ink outline-none"
-                        />
-                        <button
-                          type="button"
-                          className="flex size-9 items-center justify-center text-ink-muted hover:text-primary"
-                          onClick={() => updateItem(i, { qty: round4(line.item.qty + 1) })}
-                          aria-label="Tambah"
-                        >
-                          <Plus className="size-4" />
-                        </button>
-                      </div>
-
-                      {/* diskon item */}
-                      {maxDiscount > 0 ? (
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] font-semibold text-ink-faint">Disk.</span>
-                          <input
-                            type="number"
-                            min={0}
-                            value={line.item.discount || ""}
-                            placeholder="0"
-                            onChange={(e) => updateItem(i, { discount: Math.max(Number(e.target.value) || 0, 0) })}
-                            className="h-9 w-20 rounded-lg border border-line px-2 text-right text-xs text-ink"
-                          />
-                        </div>
-                      ) : null}
-
-                      <p className="ml-auto text-sm font-extrabold text-ink tabular-nums">{formatRp(line.subtotal)}</p>
-                    </div>
-
-                    {line.overStock ? (
-                      <p className="mt-1 text-[11px] font-bold text-danger">
-                        Stok kurang! Tersedia {formatNumber(line.item.product.stock)} {line.item.product.baseUnit}, diminta{" "}
-                        {formatNumber(line.qtyBase)}.
-                      </p>
-                    ) : null}
-                    {line.noPrice ? (
-                      <p className="mt-1 text-[11px] font-bold text-danger">Harga satuan ini belum di-set.</p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="space-y-2 border-t border-line px-4 py-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-ink-muted">Subtotal</span>
-              <span className="font-bold tabular-nums">{formatRp(subtotal)}</span>
-            </div>
-            {maxDiscount > 0 ? (
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-ink-muted">Diskon transaksi</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={txDiscount || ""}
-                  placeholder="0"
-                  onChange={(e) => setTxDiscount(Math.max(Number(e.target.value) || 0, 0))}
-                  className="h-9 w-28 rounded-lg border border-line px-2 text-right text-sm text-ink"
-                />
-              </div>
-            ) : null}
-            {overDiscount ? (
-              <p className="text-[11px] font-bold text-danger">
-                Total diskon melebihi batas kasir ({formatRp(maxDiscount)}).
-              </p>
-            ) : null}
-            <div className="flex items-center justify-between border-t border-line pt-2">
-              <span className="text-sm font-bold text-ink">TOTAL</span>
-              <span className="text-2xl font-extrabold text-primary tabular-nums">{formatRp(total)}</span>
-            </div>
-            {error ? (
-              <p className="rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-red-800">{error}</p>
-            ) : null}
-            <Button
-              size="xl"
-              className="w-full"
-              disabled={hasProblem || overDiscount || total <= 0}
-              onClick={() => {
-                setPaidAmount(0);
-                setPaymentMethod("CASH");
-                setPayOpen(true);
-              }}
-            >
-              <Banknote className="size-5" /> Bayar
-            </Button>
-          </div>
+          {cartPanel}
         </div>
       </div>
+
+      {/* ── Bar keranjang melayang (mobile/tablet) ── */}
+      <button
+        type="button"
+        onClick={() => setSheetOpen(true)}
+        className={cn(
+          "fixed inset-x-3 z-30 flex items-center justify-between rounded-2xl bg-gradient-to-r from-primary to-primary-strong px-4 py-3 text-white shadow-pop transition-transform active:scale-[0.99] xl:hidden",
+          "bottom-[calc(4.75rem+env(safe-area-inset-bottom))]"
+        )}
+      >
+        <span className="flex items-center gap-2.5">
+          <span className="relative">
+            <ShoppingCart className="size-5" />
+            {cart.length > 0 ? (
+              <span className="absolute -right-2 -top-2 flex size-4.5 items-center justify-center rounded-full bg-white text-[10px] font-extrabold text-primary-strong">
+                {cart.length}
+              </span>
+            ) : null}
+          </span>
+          <span className="text-sm font-bold">{cart.length > 0 ? "Lihat Keranjang" : "Keranjang kosong"}</span>
+        </span>
+        <span className="flex items-center gap-1.5 text-base font-extrabold tabular-nums">
+          {formatRp(total)} <ChevronUp className="size-4" />
+        </span>
+      </button>
+
+      {/* ── Bottom-sheet keranjang (mobile/tablet) ── */}
+      {sheetOpen ? (
+        <div className="fixed inset-0 z-40 xl:hidden">
+          <div className="absolute inset-0 bg-ink/50 animate-fade-in" onClick={() => setSheetOpen(false)} aria-hidden />
+          <div className="absolute inset-x-0 bottom-0 flex max-h-[86vh] flex-col overflow-hidden rounded-t-2xl bg-surface shadow-pop animate-sheet-up pb-safe">
+            <div className="flex justify-center pt-2">
+              <span className="h-1 w-10 rounded-full bg-line" />
+            </div>
+            <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+              <h2 className="inline-flex items-center gap-2 text-sm font-extrabold text-ink">
+                <ShoppingCart className="size-4 text-primary" /> Keranjang
+                <Badge tone="primary">{cart.length} item</Badge>
+              </h2>
+              <button
+                type="button"
+                onClick={() => setSheetOpen(false)}
+                className="rounded-md p-1.5 text-ink-muted hover:bg-page hover:text-ink"
+                aria-label="Tutup keranjang"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            {cartPanel}
+          </div>
+        </div>
+      ) : null}
 
       {/* ── Modal pembayaran ── */}
       <Modal open={payOpen} onClose={() => !saving && setPayOpen(false)} title={`Pembayaran — Total ${formatRp(total)}`}>
@@ -456,9 +540,9 @@ export function PosClient({
                   type="button"
                   onClick={() => setPaymentMethod(m)}
                   className={cn(
-                    "h-11 rounded-lg border text-sm font-bold",
+                    "h-11 rounded-xl border text-sm font-bold transition-colors",
                     paymentMethod === m
-                      ? "border-primary bg-primary text-primary-fg"
+                      ? "border-primary bg-primary text-primary-fg shadow-sm"
                       : "border-line bg-surface text-ink-muted hover:border-primary"
                   )}
                 >
@@ -478,14 +562,14 @@ export function PosClient({
                 value={paidAmount || ""}
                 placeholder="0"
                 onChange={(e) => setPaidAmount(Math.max(Number(e.target.value) || 0, 0))}
-                className="h-12 text-right text-lg font-extrabold"
+                className="h-12 rounded-xl text-right text-lg font-extrabold"
                 autoFocus
               />
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button
                   type="button"
                   onClick={() => setPaidAmount(total)}
-                  className="rounded-lg bg-primary-soft px-3 py-1.5 text-xs font-bold text-primary-strong hover:bg-primary hover:text-primary-fg"
+                  className="rounded-lg bg-primary-soft px-3 py-2 text-xs font-bold text-primary-strong transition-colors hover:bg-primary hover:text-primary-fg"
                 >
                   Uang pas
                 </button>
@@ -494,13 +578,13 @@ export function PosClient({
                     key={q}
                     type="button"
                     onClick={() => setPaidAmount(q)}
-                    className="rounded-lg bg-page px-3 py-1.5 text-xs font-bold text-ink-muted hover:bg-primary-soft hover:text-primary"
+                    className="rounded-lg bg-page px-3 py-2 text-xs font-bold text-ink-muted transition-colors hover:bg-primary-soft hover:text-primary"
                   >
                     {formatRp(q)}
                   </button>
                 ))}
               </div>
-              <div className="mt-3 flex items-center justify-between rounded-lg bg-page px-3 py-2.5">
+              <div className="mt-3 flex items-center justify-between rounded-xl bg-page px-3 py-2.5">
                 <span className="text-sm font-semibold text-ink-muted">Kembalian</span>
                 <span className={cn("text-xl font-extrabold tabular-nums", change < 0 ? "text-danger" : "text-success")}>
                   {formatRp(change)}
@@ -508,7 +592,7 @@ export function PosClient({
               </div>
             </div>
           ) : (
-            <p className="rounded-lg bg-info-soft px-3 py-2.5 text-xs font-semibold text-blue-800">
+            <p className="rounded-xl bg-info-soft px-3 py-2.5 text-xs font-semibold text-blue-800">
               Pastikan {paymentMethod === "TRANSFER" ? "transfer" : "pembayaran QRIS"} sebesar {formatRp(total)} sudah
               masuk sebelum menyimpan.
             </p>
@@ -531,7 +615,9 @@ export function PosClient({
       <Modal open={!!result} onClose={() => setResult(null)} title="Transaksi Berhasil">
         {result ? (
           <div className="flex flex-col items-center gap-3 text-center">
-            <CheckCircle2 className="size-14 text-success" />
+            <span className="flex size-16 items-center justify-center rounded-full bg-success-soft">
+              <CheckCircle2 className="size-9 text-success" />
+            </span>
             <p className="text-lg font-extrabold text-ink">{result.invoiceNo}</p>
             {result.changeAmount > 0 ? (
               <p className="text-sm text-ink-muted">

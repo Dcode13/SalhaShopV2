@@ -24,10 +24,10 @@ export default async function PenggunaPage() {
     <>
       <PageHeader title="Pengguna" description="Kelola akun owner & kasir. Akun tidak pernah dihapus, hanya dinonaktifkan." />
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3">
         <CreateKasirForm outlets={outlets.map((o) => ({ id: o.id, name: o.name }))} />
 
-        <Card className="xl:col-span-2">
+        <Card className="lg:col-span-2">
           <TableWrap>
             <Table>
               <thead>

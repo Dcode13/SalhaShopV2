@@ -13,17 +13,22 @@ export default function LoginPage() {
   const [showPw, setShowPw] = React.useState(false);
 
   return (
-    <div className="theme-owner flex min-h-dvh items-center justify-center bg-gradient-to-br from-sidebar via-[#341d63] to-primary-strong p-4">
-      <div className="w-full max-w-sm">
+    <div className="theme-owner relative flex min-h-dvh items-center justify-center overflow-hidden bg-gradient-to-br from-sidebar via-[#341d63] to-primary-strong p-4">
+      {/* dekorasi latar */}
+      <div className="pointer-events-none absolute -left-24 -top-24 size-80 rounded-full bg-primary/30 blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute -bottom-28 -right-24 size-80 rounded-full bg-[#a78bfa]/25 blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute left-1/2 top-1/3 size-40 -translate-x-1/2 rounded-full bg-white/5 blur-2xl" aria-hidden />
+
+      <div className="relative w-full max-w-sm animate-slide-up">
         <div className="mb-6 flex flex-col items-center text-center">
-          <span className="flex size-20 items-center justify-center rounded-2xl bg-white p-2 shadow-pop">
+          <span className="flex size-20 items-center justify-center rounded-3xl bg-white p-2 shadow-pop ring-4 ring-white/15">
             <Image src="/salhashoplogo.png" alt="Logo Salha Shop" width={64} height={64} className="size-16 object-contain" priority />
           </span>
-          <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-white">Salha Shop</h1>
+          <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-white">Salha Shop</h1>
           <p className="mt-1 text-sm text-white/70">Sistem Manajemen Lapak Grosir & Kios Terminal</p>
         </div>
 
-        <form action={formAction} className="rounded-2xl bg-surface p-6 shadow-pop">
+        <form action={formAction} className="rounded-3xl bg-surface p-6 shadow-pop ring-1 ring-white/25 sm:p-7">
           <div className="space-y-4">
             <div>
               <Label htmlFor="email">Email</Label>

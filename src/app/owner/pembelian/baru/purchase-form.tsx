@@ -111,8 +111,8 @@ export function PurchaseForm({
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-3">
-      <div className="space-y-4 xl:col-span-2">
+    <div className="grid gap-4 lg:grid-cols-3">
+      <div className="space-y-4 lg:col-span-2">
         <Card>
           <CardHeader title="Info Nota" />
           <CardBody className="grid gap-3 sm:grid-cols-2">

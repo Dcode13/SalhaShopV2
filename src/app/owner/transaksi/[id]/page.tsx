@@ -62,8 +62,8 @@ export default async function OwnerTransaksiDetail({ params }: { params: Promise
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
           <CardHeader title="Item Terjual" description="Termasuk snapshot HPP saat transaksi (cost_at_sale)" />
           <TableWrap>
             <Table>

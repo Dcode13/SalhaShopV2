@@ -305,6 +305,90 @@ export async function updateProduct(productId: string, input: ProductInput): Pro
   }
 }
 
+export type DeleteProductResult =
+  | { ok: true }
+  | { ok: false; error: string; canDeactivate?: boolean };
+
+class DeleteBlocked extends Error {
+  constructor(
+    public canDeactivate: boolean,
+    message: string
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Hapus produk PERMANEN — hanya untuk produk yang belum pernah dipakai
+ * transaksi apa pun (penjualan/pembelian/opname/transfer/koreksi stok).
+ * Produk ber-riwayat harus dinonaktifkan saja (soft delete, PRD §6.2d)
+ * supaya laporan laba historis & kartu stok tetap utuh.
+ * Catatan stok awal (movement INITIAL) ikut terhapus — dianggap pembatalan
+ * salah input, dan penghapusan tercatat di audit log.
+ */
+export async function deleteProduct(productId: string): Promise<DeleteProductResult> {
+  const user = await requireOwner();
+  try {
+    await prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({
+        where: { id: productId },
+        include: {
+          _count: {
+            select: { saleItems: true, purchaseItems: true, opnameItems: true, transferItems: true },
+          },
+        },
+      });
+      if (!product) throw new DeleteBlocked(false, "Produk tidak ditemukan.");
+
+      const c = product._count;
+      const hasTx = c.saleItems > 0 || c.purchaseItems > 0 || c.opnameItems > 0 || c.transferItems > 0;
+      const nonInitialMoves = hasTx
+        ? 1
+        : await tx.stockMovement.count({ where: { productId, type: { not: "INITIAL" } } });
+      if (hasTx || nonInitialMoves > 0) {
+        throw new DeleteBlocked(
+          true,
+          `"${product.name}" sudah punya riwayat transaksi/mutasi stok — tidak bisa dihapus permanen agar laporan laba dan kartu stok tetap utuh. Nonaktifkan saja.`
+        );
+      }
+
+      await tx.stockMovement.deleteMany({ where: { productId } }); // hanya catatan INITIAL stok awal
+      await tx.inventory.deleteMany({ where: { productId } });
+      await tx.product.delete({ where: { id: productId } }); // product_units & product_prices ikut terhapus (cascade)
+
+      await logAudit(
+        {
+          userId: user.id,
+          action: "DELETE",
+          entityType: "Product",
+          entityId: productId,
+          oldValue: { sku: product.sku, name: product.name, categoryId: product.categoryId },
+        },
+        tx
+      );
+    });
+
+    revalidatePath("/owner/produk");
+    revalidatePath("/owner/stok");
+    revalidatePath("/owner/kelengkapan");
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof DeleteBlocked) {
+      return { ok: false, error: e.message, canDeactivate: e.canDeactivate };
+    }
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+      // jaring pengaman FK RESTRICT bila ada relasi yang lolos pre-check
+      return {
+        ok: false,
+        canDeactivate: true,
+        error: "Produk masih terhubung ke data lain sehingga tidak bisa dihapus permanen. Nonaktifkan saja.",
+      };
+    }
+    console.error("deleteProduct gagal:", e);
+    return { ok: false, error: "Gagal menghapus produk." };
+  }
+}
+
 export async function toggleProductActive(productId: string): Promise<void> {
   const user = await requireOwner();
   const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });

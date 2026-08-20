@@ -32,7 +32,7 @@ export default async function PengeluaranPage() {
         description="Kas keluar kecil dari laci (parkir, kresek, dll). Mengurangi kas seharusnya saat tutup shift."
       />
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <PengeluaranForm categories={categories.map((c) => ({ id: c.id, name: c.name }))} />
 
         <Card>
